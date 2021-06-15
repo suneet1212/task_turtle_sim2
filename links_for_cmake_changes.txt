@@ -1,0 +1,5 @@
+For CPPAD changes:
+https://github.com/coin-or/CppAD/blob/master/CMakeLists.txt
+
+For IPOPT changes:
+https://github.com/bapaden/ipopt-cmake-demo/blob/master/CMakeLists.txt
