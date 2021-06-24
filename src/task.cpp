@@ -12,8 +12,8 @@ float obs_x;
 float obs_y;
 
 // target position:
-double target_x = 9.5;
-double target_y = 9.4;
+double target_x = 8;
+double target_y = 5.4;
 double target_theta = 0;
 
 // current position
@@ -179,7 +179,7 @@ int main(int argc, char **argv)
         gu[i] = 0.5;
     }
     gl[2*N+1] = 0.5; gu[2*N+1] = 9.5;
-    gl[2*N+2] = 0.5; gu[2*N+2] = 9.5;
+    gl[2*N+2] = 0.5; gu[2*N+2] = 5.5;
     gl[2*N+3] = -3.14; gu[2*N+3] = 3.14;
     // object that computes objective and constraints
     FG_eval fg_eval;
