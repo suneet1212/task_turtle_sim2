@@ -7,3 +7,9 @@ x_next = x_current + velocity_current * cos(steering_angle + &theta;_current) * 
 y_next = y_current + velocity_current * sin(steering_angle + &theta;_current) * &Delta;T
 
 &theta;_next = &theta;_current + velocity_current * sin(steering_angle) * &Delta;T / L
+
+
+
+L = biycle model length
+<br>
+&Delta;T is the time period for mpc
