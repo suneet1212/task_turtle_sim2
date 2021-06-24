@@ -30,7 +30,7 @@ y_next = y_current + velocity_current * sin(steering_angle + &theta;_current) * 
 
 
 ### Constants:
-I am initialising the steering_angle as 0
+I am initialising the steering_angle as 0, while for position and velocity I initialise them as the current positio and velocity as read by subscribing to the /pose topic
 
 N = MPC Horizon Length
 
