@@ -219,3 +219,7 @@ include_directories(
 add_executable(task src/turtle_task.cpp)
 target_link_libraries(task ${IPOPT_LIBRARIES})
 target_link_libraries(task ${catkin_LIBRARIES})
+
+add_executable(task_bicycle src/task.cpp)
+target_link_libraries(task_bicycle ${IPOPT_LIBRARIES})
+target_link_libraries(task_bicycle ${catkin_LIBRARIES})

@@ -13,7 +13,7 @@ float obs_y;
 // target position:
 double target_x = 10;
 double target_y = 5.4;
-double target_theta = 0;
+double target_theta = -3.14;
 
 // current position
 float x_curr;
@@ -28,6 +28,8 @@ double T = 0.1; // Sampling time period
 int N = 10; // Horizon
 int marker = 0;
 
+// 
+int done = 0;
 typedef CPPAD_TESTVECTOR( double ) Dvector;
 size_t nx = 2*(N);
 Dvector X_initial(nx);
@@ -148,14 +150,19 @@ void curr_position_callback(const turtlesim::Pose& msg)
     std::cout << "Current y-coord : " << y_curr << "\n";
     std::cout << "Current theta : " << theta_curr << "\n";
 }
-
-
+void target_position_callback(const turtlesim::Pose& msg)
+{
+    target_x = msg.x;
+    target_y = msg.y;
+    target_theta = msg.theta;
+}
 int main(int argc, char **argv)
 {
     ros::init(argc, argv, "turtle_task");
     ros::NodeHandle n;
     ros::Subscriber turt1_pose_sub = n.subscribe("/turtle1/pose", 10, obs_position_callback);
     ros::Subscriber turt2_pose_sub = n.subscribe("/turtle2/pose", 10, curr_position_callback);
+    ros::Subscriber turt2_target_sub = n.subscribe("/target_pose", 10, target_position_callback);
     ros::Publisher turt2_vel_pub = n.advertise<geometry_msgs::Twist>("/turtle2/cmd_vel",10);
     
     geometry_msgs::Twist velocity;
@@ -224,7 +231,6 @@ int main(int argc, char **argv)
     // place to return solution
     // ROS_INFO("dist: %ld", dist);
     CppAD::ipopt::solve_result<Dvector> solution;
-
     while ((dist > 0.01) && (ros::ok()))
     {
         if(marker == 0)
@@ -266,7 +272,6 @@ int main(int argc, char **argv)
 
         // ros::Duration(T).sleep();
     }
-
     ros::spin();
 
   return 0;
