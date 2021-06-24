@@ -14,8 +14,26 @@ y_next = y_current + velocity_current * sin(steering_angle + &theta;_current) * 
 
 &theta;_next = &theta;_current + velocity_current * sin(steering_angle) * &Delta;T / L
 
+### Objective Function:
+(x_n-target_x)<sup>2</sup> + (y_n-target_y)<sup>2</sup> + (theta_n-target_&theta;)<sup>2</sup>
 
+### Constraints:
+-1.5 <= velocity[i+1] - velocity[i] <= 1.5      (for i from 0 to N-1)
+
+-1.5 <= steering_angle[i+1] - steering_angle[i] <= 1.5      (for i from 0 to N-1)
+
+0 <= x_n <= 10
+
+0 <= y_n <= 10
+
+-3.14 <= &theta;_n <= 3.14
+
+
+### Constants:
+I am initialising the steering_angle as 0
+
+N = MPC Horizon Length
 
 L = biycle model length
-<br>
+
 &Delta;T is the time period for mpc
