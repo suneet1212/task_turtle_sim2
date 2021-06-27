@@ -12,8 +12,8 @@ float obs_x;
 float obs_y;
 
 // target position:
-double target_x = 8;
-double target_y = 5.4;
+double target_x = 9.5;
+double target_y = 9.4;
 double target_theta = 0;
 
 // current position
@@ -28,7 +28,7 @@ float dist = 20;
 double T = 0.1; // Sampling time period
 int N = 15; // Horizon
 int marker = 0;
-double L = 0.05;
+double L = 1;
 
 // 
 int done = 0;
@@ -112,7 +112,7 @@ namespace
                 fg[2*N+2] = x_n;
                 fg[2*N+3] = y_n;
                 fg[2*N+4] = theta_n;
-
+                // ROS_INFO("Objective function value: %f", fg[0]);
                 // completed till fg[4N];
                 return;
             }
@@ -142,19 +142,19 @@ void curr_position_callback(const turtlesim::Pose& msg)
     // std::cout << "Current y-coord : " << y_curr << "\n";
     // std::cout << "Current theta : " << theta_curr << "\n";
 }
-void target_position_callback(const turtlesim::Pose& msg)
-{
-    target_x = msg.x;
-    target_y = msg.y;
-    target_theta = msg.theta;
-}
+// void target_position_callback(const turtlesim::Pose& msg)
+// {
+//     target_x = msg.x;
+//     target_y = msg.y;
+//     target_theta = msg.theta;
+// }
 int main(int argc, char **argv)
 {
     ros::init(argc, argv, "turtle_task");
     ros::NodeHandle n;
     ros::Subscriber turt1_pose_sub = n.subscribe("/turtle1/pose", 10, obs_position_callback);
     ros::Subscriber turt2_pose_sub = n.subscribe("/turtle2/pose", 10, curr_position_callback);
-    ros::Subscriber turt2_target_sub = n.subscribe("/target_pose", 10, target_position_callback);
+    // ros::Subscriber turt2_target_sub = n.subscribe("/target_pose", 10, target_position_callback);
     ros::Publisher turt2_vel_pub = n.advertise<geometry_msgs::Twist>("/turtle2/cmd_vel",10);
     
     geometry_msgs::Twist velocity;
@@ -178,8 +178,8 @@ int main(int argc, char **argv)
         gl[i] = 0;
         gu[i] = 0.5;
     }
-    gl[2*N+1] = 0.5; gu[2*N+1] = 9.5;
-    gl[2*N+2] = 0.5; gu[2*N+2] = 5.5;
+    gl[2*N+1] = 0; gu[2*N+1] = 10;
+    gl[2*N+2] = 0; gu[2*N+2] = 10;
     gl[2*N+3] = -3.14; gu[2*N+3] = 3.14;
     // object that computes objective and constraints
     FG_eval fg_eval;
@@ -231,10 +231,25 @@ int main(int argc, char **argv)
             options, X_initial, X_lower, X_upper, gl, gu, fg_eval, solution
         );
         // publish
-        ROS_INFO("solutions_status: %d", solution.status);
+        ROS_INFO("solutions_fg_eval: %f", solution.obj_value);
         velocity.linear.x = solution.x[0];
-        velocity.angular.z = solution.x[1];
+        velocity.angular.z = sin(solution.x[1])*solution.x[0]/L;
         // std::cout << velocity << "\n";
+        
+        
+        // std::vector<double> x_coord;
+        // std::vector<double> y_coord;
+        // std::vector<double> theta_coord;
+        // x_coord.push_back(x_curr);
+        // x_coord.push_back(y_curr);
+        // x_coord.push_back(theta_curr);
+        // for (int i = 0; i < N; i++)
+        // {
+        //     double x_next = T* solution.x[2] *CppAD::cos(theta_n + steering_ang[i]);
+        //     y_n += T*vel[i]*CppAD::sin(theta_n + steering_ang[i]);
+        //     theta_n += T*CppAD::sin(steering_ang[i])*vel[i]/L;
+        // }
+        
         double begin = ros::Time::now().toSec();
         while (ros::Time::now().toSec() < begin+T)
         {
@@ -247,6 +262,7 @@ int main(int argc, char **argv)
 
         // ros::Duration(T).sleep();
     }
+    std::cout << "DONE\n";
     ros::spin();
 
   return 0;

@@ -11,8 +11,8 @@ float obs_x;
 float obs_y;
 
 // target position:
-double target_x = 10;
-double target_y = 5.4;
+double target_x = 9.5;
+double target_y = 9.5;
 double target_theta = -3.14;
 
 // current position
