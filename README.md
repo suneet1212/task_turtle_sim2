@@ -2,11 +2,21 @@
 
 MPC with turtlesim based on unicycle model is in file <a href="https://github.com/suneet1212/task_turtle_sim/blob/main/src/turtle_task.cpp"> turtle_task.cpp </a>
 <br>
+To view the code working:
+<ol>
+  <li> Run turtlesim_node and spawn another turtle. </li>
+  <li> Run "rosrun task_turle_sim task" in another terminal window</li>
+</ol>
+<br>
 MPC with turtlesim based on bicycle model is in file <a href="https://github.com/suneet1212/task_turtle_sim/blob/main/src/task.cpp"> task.cpp </a>
 <br>
+To view the code working:
+<ol>
+  <li> Run turtlesim_node and spawn another turtle. </li>
+  <li> Run "rosrun task_turle_sim task_bicycle" in another terminal window</li>
+</ol>
 
-
-### Equations Used for bicycle model
+### Equations Used for Bicycle Model:
 
 x_next = x_current + velocity_current * cos(steering_angle + &theta;_current) * &Delta;T
 
