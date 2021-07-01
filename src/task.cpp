@@ -6,15 +6,13 @@
 #include "std_msgs/String.h"
 #include <sstream>
 #include "turtlesim/Pose.h"
+#include <iostream>
+#include <fstream>
+#include <string>
 
 // obstacle position:
 float obs_x;
 float obs_y;
-
-// target position:
-double target_x = 9.5;
-double target_y = 9.4;
-double target_theta = 0;
 
 // current position
 float x_curr;
@@ -22,24 +20,10 @@ float y_curr;
 float theta_curr;
 float vel_curr;
 float steering_ang_curr;
-float dist = 20;
+float dist = 20; // this is ensure that the while is executed at least once.
 
-// Other constants of motion
-double T = 0.1; // Sampling time period
-int N = 15; // Horizon
-int marker = 0;
-double L = 1;
-
-// 
-int done = 0;
-typedef CPPAD_TESTVECTOR( double ) Dvector;
-size_t nx = 2*(N);
-Dvector X_initial(nx);
-Dvector X_lower(nx);
-Dvector X_upper(nx);
-
-size_t ng = 2*N+4;
-Dvector gl(ng), gu(ng);
+int marker = 0;  // this marker is set to 1 after the mpc is executed at least once. This is done for initializing the steering angle and velocity.
+int marker2 = 0; // this marker is for verifying whether the required number of input parameters is recieved or not.
 
 namespace
 {
@@ -47,42 +31,38 @@ namespace
     class FG_eval
     {
         public:
+            int N; // Horizon Length
+            double T; // Sampling time period
+            double target_x; // target x position
+            double target_y; // target y position
+            double target_theta; // target angle
+            double L; // length of the bicycle
+
             typedef CPPAD_TESTVECTOR(AD<double>) ADvector;
             void operator()(ADvector& fg, const ADvector X)
             {    
-                // const ADvector positions, const ADvector velocity, const ADvector obs_position
-                // X_curr is the current position
-                // assert(positions.size() == 3*(N+1)); // the position vectors have been flattened
-                // assert(velocity.size() == 2*(N+1)); // so are the velocity vectors
-                // assert(obs_position.size() == 2);
-                // ROS_INFO("fg size = %d", fg.size());
-                assert(fg.size() == (2*N)+5);
+                assert(fg.size() == (2*N)+5); 
+                // 1 for objective function, 
+                // 2*N constraints for ensuring that the consecutive velocity and steering angle do not change by much,
+                // 3 more constraints ensuring that the position and the angle remain in valid range.
                 assert(X.size() == 2*N);
+                // N velocity and N steering angle values to be found. (for the next N steps)
+                // We need to find these 2*N values
 
-                // Fortran style indexing
-                // one for loop reqd, and optimisation is needed for X[N+1]th position to be closest to the target point
-                // AD<double> x[N+1];
-                // AD<double> y[N+1];
-                // AD<double> theta[N+1];
-                // AD<double> curr_x = X[0];
-                // AD<double> curr_y = X[1];
-                // AD<double> curr_theta = X[2];                
-                AD<double> vel[N];
-                AD<double> steering_ang[N];
-                for (int i = 0; i < N; i++)
+                // Fortran style indexing               
+                AD<double> vel[N]; // array storing the next N velocities.
+                AD<double> steering_ang[N]; // array storing the next N steering angles.
+                for (int i = 0; i < N; i++) // initialising the same
                 {
-                    // x[i] = X[5*i];
-                    // y[i] = X[5*i + 1];
-                    // theta[i] = X[5*i + 2];
                     vel[i] = X[2*i];
                     steering_ang[i] = X[2*i+1];
                 }
-                // AD<double> obs_x = X[5*(N+1)];0
-                // AD<double> obs_y = X[5*(N+1)+1];
 
+                // local variable to store the position. Following for-loop will find the expected position after N steps
                 AD<double> x_n = x_curr;
-                AD<double> y_n = y_curr;
+                AD<double> y_n = y_curr; 
                 AD<double> theta_n = theta_curr;
+                // these values are calculated using the vecoities and the steering angles that we need to optimize for. 
                 for (int i = 0; i < N; i++)
                 {
                     x_n += T*vel[i]*CppAD::cos(theta_n + steering_ang[i]);
@@ -91,29 +71,20 @@ namespace
                 }
                 
                 // f(x)
-                // optimizing eqn:
+                // Objective eqn: Distance between the target and the position after n steps.
                 fg[0] = pow(x_n-target_x,2) + pow(y_n-target_y,2) + pow(theta_n-target_theta,2);
-                // for (int i = 0; i < N; i++)
-                // {
-                //     // fg[0] += pow(x[i]-target_x,2) + pow(y[i]-target_y,2) + pow(theta[i]-target_theta,2);
-                //     // fg[0] += pow(vel[i+1]-vel[i],2) + pow(steering_ang[i+1]-steering_ang[i],2);
-
-                // }
 
                 // Constraints:
-
                 // eqn for the distance from the obstacle is greater than 2 at each time step
-                fg[1] = (x_n- obs_x)*(x_n- obs_x) + (y_n- obs_y)*(y_n- obs_y); // values greater than 4
+                fg[1] = (x_n- obs_x)*(x_n- obs_x) + (y_n- obs_y)*(y_n- obs_y); // squared distance greater than 4
                 for (int i = 0; i < N-1; i++)
                 {
-                    fg[2*i+2] = abs(vel[i+1] - vel[i]);
+                    fg[2*i+2] = abs(vel[i+1] - vel[i]); // to ensure that the consecutive values don't differ by much
                     fg[2*i+3] = abs(steering_ang[i+1] - steering_ang[i]);
                 }
-                fg[2*N+2] = x_n;
+                fg[2*N+2] = x_n; // constraint for position to be in valid range.
                 fg[2*N+3] = y_n;
                 fg[2*N+4] = theta_n;
-                // ROS_INFO("Objective function value: %f", fg[0]);
-                // completed till fg[4N];
                 return;
             }
      };
@@ -121,49 +92,114 @@ namespace
 
 void obs_position_callback(const turtlesim::Pose& msg)
 {
+    // called by subscriber of turtle1's pose.
+    // to update the obstacle position
     obs_x = msg.x;
     obs_y = msg.y;
 }
 void curr_position_callback(const turtlesim::Pose& msg)
 {
-    // take current position and then call the function to solve for the equations.
-    // create global position and velocity vectors.
-    // Initialise Position as a straight line from current pos to final pos and velocity as same as current velocity
-    // ROS_INFO("dist1 = %ld", dist);
+    // called by subscriber of turtle2's pose.
+    // to update the current position and velocity.
     x_curr = msg.x;
     y_curr = msg.y;
     theta_curr = msg.theta;
     vel_curr = msg.linear_velocity;
-    // steering_ang_curr = msg.angular_velocity;
-    
-    dist = pow(pow(x_curr-target_x,2) + pow(y_curr-target_y,2) + pow(theta_curr-target_theta,2),0.5); //
-    // dist = pow(x_curr-target_x,2) + pow(y_curr-target_y,2) + pow(theta_curr-target_theta,2);
-    // std::cout << "Current x-coord : " << x_curr << "\n";
-    // std::cout << "Current y-coord : " << y_curr << "\n";
-    // std::cout << "Current theta : " << theta_curr << "\n";
 }
-// void target_position_callback(const turtlesim::Pose& msg)
-// {
-//     target_x = msg.x;
-//     target_y = msg.y;
-//     target_theta = msg.theta;
-// }
+
 int main(int argc, char **argv)
 {
     ros::init(argc, argv, "turtle_task");
     ros::NodeHandle n;
-    ros::Subscriber turt1_pose_sub = n.subscribe("/turtle1/pose", 10, obs_position_callback);
-    ros::Subscriber turt2_pose_sub = n.subscribe("/turtle2/pose", 10, curr_position_callback);
-    // ros::Subscriber turt2_target_sub = n.subscribe("/target_pose", 10, target_position_callback);
-    ros::Publisher turt2_vel_pub = n.advertise<geometry_msgs::Twist>("/turtle2/cmd_vel",10);
+    ros::Subscriber turt1_pose_sub = n.subscribe("/turtle1/pose", 10, obs_position_callback); // subscribes to the obstacle's pose
+    ros::Subscriber turt2_pose_sub = n.subscribe("/turtle2/pose", 10, curr_position_callback); // subscribes to the controlling object's pose
+    ros::Publisher turt2_vel_pub = n.advertise<geometry_msgs::Twist>("/turtle2/cmd_vel",10); // to publish the velocity
     
     geometry_msgs::Twist velocity;
+    // object is controlled only by giving a linear velocity along the direction it faces and the angular velocity along the perpendicular to the plane.
     velocity.angular.x = 0;
     velocity.angular.y = 0;
     velocity.linear.y = 0;
     velocity.linear.z = 0;
+    
+    // object that computes objective and constraints
+    FG_eval fg_eval;
 
-    for (int i = 0; i < N; i++)
+    // Taking input from the parameter file.
+    std::ifstream param_file;
+    param_file.open("catkin_ws/src/task_turtle_sim/src/params/params_b.txt");
+    // this path is relative from the home directory.
+    // If it the file is not being opened by the code then check if the file exists in the params directory.
+    // If yes then uncomment the following lines to see the current directory and then edit relative path.
+    if(param_file.is_open())
+    {
+        std::string s;
+        while (param_file.good())
+        {
+            int is_comment = 0;
+            getline(param_file,s);
+            std::vector<std::string> words;
+            std::string word;
+            std::stringstream ss(s);
+            while (ss >> word)
+            {
+                if(word == "//") break; 
+                words.push_back(word);
+                is_comment = 1;
+            }
+            if(is_comment == 1)
+            {
+                assert(words.size() == 3);
+                if(words[0] == "N")
+                {
+                    fg_eval.N = std::stoi(words[2]);
+                    marker2 += 1;
+                }
+                else if((words[0] == "T"))
+                {
+                    fg_eval.T = std::stod(words[2]);
+                    marker2 += 1;
+                }
+                else if((words[0] == "target_x"))
+                {
+                    fg_eval.target_x = std::stod(words[2]);
+                    marker2 += 1;
+                }
+                else if((words[0] == "target_y"))
+                {
+                    fg_eval.target_y = std::stod(words[2]);
+                    marker2 += 1;
+                }
+                else if((words[0] == "target_theta"))
+                {
+                    fg_eval.target_theta = std::stod(words[2]);
+                    marker2 += 1;
+                }
+                else if((words[0] == "L"))
+                {
+                    fg_eval.L = std::stod(words[2]);
+                    marker2 += 1;
+                }
+                else
+                {
+                    std::cout << "Check parameter file. Unidentified parameter entered\n";
+                    ros::shutdown();
+                }
+            }
+        }
+        assert(marker2 == 6); // to ensure that the required number of parameters are given.
+    }
+
+    typedef CPPAD_TESTVECTOR( double ) Dvector;
+    size_t nx = 2*(fg_eval.N);
+    Dvector X_initial(nx);  // initial values of the velocities and the steering angle. This is required for the optimization algo used by CPPAD
+    Dvector X_lower(nx);  // lower limits of the velocity and the steering angles.
+    Dvector X_upper(nx);  // upper limits of the velocity and the steering angles.
+
+    size_t ng = 2*fg_eval.N+4;
+    Dvector gl(ng), gu(ng); // lower and upper limits of the constraints value.
+
+    for (int i = 0; i < fg_eval.N; i++)
     {
         X_lower[2*i] = -1.5;
         X_lower[2*i+1] = -1.0;
@@ -171,19 +207,20 @@ int main(int argc, char **argv)
         X_upper[2*i] = 1.5;
         X_upper[2*i+1] = 1.0;
     }
-    gl[0] = 4.0;
-    gu[0] = 1e19;
-    for (int i = 1; i < 2*N+1; i++)
+
+    gl[0] = 4.0; gu[0] = 1e19; // constraint for the distance between the turtlesim and the obstacle
+    for (int i = 1; i < 2*fg_eval.N+1; i++)
     {
+        // constraints to ensure that the cnsecutive values don't differ by much
         gl[i] = 0;
         gu[i] = 0.5;
     }
-    gl[2*N+1] = 0; gu[2*N+1] = 10;
-    gl[2*N+2] = 0; gu[2*N+2] = 10;
-    gl[2*N+3] = -3.14; gu[2*N+3] = 3.14;
-    // object that computes objective and constraints
-    FG_eval fg_eval;
+    // constraint for position to be in valid range.
+    gl[2*fg_eval.N+1] = 0; gu[2*fg_eval.N+1] = 10;
+    gl[2*fg_eval.N+2] = 0; gu[2*fg_eval.N+2] = 10;
+    gl[2*fg_eval.N+3] = -3.14; gu[2*fg_eval.N+3] = 3.14; // constraint for angle to be in valid range.
 
+    // print options for cppad
     std::string options;
     // Uncomment this if you'd like more print information
     options += "Integer print_level  0\n";
@@ -201,16 +238,14 @@ int main(int argc, char **argv)
     // Change this as you see fit.
     options += "Numeric max_cpu_time          0.5\n";
 
-    // ros::Rate loop_rate(T);
-    int count = 0;
     // place to return solution
-    // ROS_INFO("dist: %ld", dist);
     CppAD::ipopt::solve_result<Dvector> solution;
-    while ((dist > 0.01) && (ros::ok()))
+    while ((dist > 0.01) && (ros::ok())) // run till the distance between the target and the turtlesim is less than 0.01. Also to stop running if the rosnode is shutdown
     {
+        // initializing the steering angle and velocity.
         if(marker == 0)
         {
-            for (int i = 0; i < N; i++)
+            for (int i = 0; i < fg_eval.N; i++)
             {
                 X_initial[2*i] = vel_curr;
                 X_initial[2*i + 1] = 0;
@@ -219,50 +254,34 @@ int main(int argc, char **argv)
         }
         else
         {
-            for (int i = 0; i < N; i++)
+            for (int i = 0; i < fg_eval.N; i++)
             {
                 X_initial[2*i] = solution.x[2*i];
                 X_initial[2*i + 1] = solution.x[2*i + 1];
             }
         }
-        // initial values have been declared.
 
+        // calling cppad function to optimize for the best values of velocity and steering angles
         CppAD::ipopt::solve<Dvector, FG_eval>(
             options, X_initial, X_lower, X_upper, gl, gu, fg_eval, solution
         );
+        ROS_INFO("solutions_fg_eval: %f", solution.obj_value); // printing out the objective function value
         // publish
-        ROS_INFO("solutions_fg_eval: %f", solution.obj_value);
         velocity.linear.x = solution.x[0];
-        velocity.angular.z = sin(solution.x[1])*solution.x[0]/L;
+        velocity.angular.z = sin(solution.x[1])*solution.x[0]/fg_eval.L; // angular velocity in terms of steering angle
         // std::cout << velocity << "\n";
         
-        
-        // std::vector<double> x_coord;
-        // std::vector<double> y_coord;
-        // std::vector<double> theta_coord;
-        // x_coord.push_back(x_curr);
-        // x_coord.push_back(y_curr);
-        // x_coord.push_back(theta_curr);
-        // for (int i = 0; i < N; i++)
-        // {
-        //     double x_next = T* solution.x[2] *CppAD::cos(theta_n + steering_ang[i]);
-        //     y_n += T*vel[i]*CppAD::sin(theta_n + steering_ang[i]);
-        //     theta_n += T*CppAD::sin(steering_ang[i])*vel[i]/L;
-        // }
-        
+        // to ensure that the same values of velocity and steering angle are published for the sampling time period after which the values will be calculated again
         double begin = ros::Time::now().toSec();
-        while (ros::Time::now().toSec() < begin+T)
+        while (ros::Time::now().toSec() < begin+fg_eval.T)
         {
             turt2_vel_pub.publish(velocity);
-            // std::cout << count << "\n";
         }
         ros::spinOnce();
-        // count += 1;
-        // loop_rate.sleep();
 
-        // ros::Duration(T).sleep();
+        // updating the distance between the obstacle and the turtlesim
+        dist = pow(pow(x_curr-fg_eval.target_x,2) + pow(y_curr-fg_eval.target_y,2) + pow(theta_curr-fg_eval.target_theta,2),0.5);  
     }
-    std::cout << "DONE\n";
     ros::spin();
 
   return 0;
